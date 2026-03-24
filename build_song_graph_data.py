@@ -75,7 +75,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--songs-per-genre",
         type=int,
-        default=20,
+        default=35,
         help="How many non-seed songs to sample from each genre.",
     )
     parser.add_argument(

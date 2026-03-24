@@ -74,7 +74,7 @@ Why this is still general-purpose:
 After keeping the seed artists, the script samples additional songs from the rest of the dataset, grouped by `track_genre`.
 
 Default behavior:
-- sample up to `20` non-seed songs per genre
+- sample up to `35` non-seed songs per genre
 
 Why we sample:
 - the full deduplicated dataset is large enough that computing all pairwise similarities would be expensive
