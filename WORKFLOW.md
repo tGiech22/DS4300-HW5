@@ -220,6 +220,19 @@ This workflow satisfies the assignment requirements because it:
 - defines an explicit similarity metric
 - creates a graph that is small enough to visualize and discuss on a poster
 
+## Why This Is Still A General-Purpose System
+
+The graph is not built only for The Strokes and Regina Spektor. Those artists are force-included only so the required evaluation case is guaranteed to exist in the sampled graph.
+
+The system is still general-purpose because:
+
+- every sampled song is represented using the same graph model
+- every sampled song is compared using the same audio-feature similarity method
+- every sampled song can connect to its nearest neighbors, not just the seed artists
+- the same recommendation query pattern could be used for any liked songs present in the graph
+
+In other words, The Strokes and Regina Spektor are included as test inputs, not as the basis of a custom-built network. The graph construction rule is global, and the recommendation method can be reused for many listeners and many musical starting points.
+
 ## Reproducibility
 
 Run the full workflow in this order:
