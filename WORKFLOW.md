@@ -248,4 +248,15 @@ This produces:
 - `song_nodes.csv`
 - `song_edges.csv`
 
-Those files can then be imported into Neo4j with `LOAD CSV` to create the final recommendation graph.
+Next, copy the 'song_nodes.csv' and 'song_edges.csv' files to the 'neo4j/import/' folder to prepare for database import. Then, copy the cypher code from these two files into the neo4j browser, and run consecutively:
+
+- 'import_nodes.cypher'
+- 'import_edged.cypher'
+
+Once the graph is successfully imported, we can now run our recommendation algorithm with the steps below:
+
+- Open the 'song_recommendations.cypher' file. Copy the "STEP 1" code into the neo4j browser, adjust the 'seedArtists' parameter if desired, and run.
+- Copy the "STEP 2" code into the neo4j browser and run to generate recommendations.
+
+
+
