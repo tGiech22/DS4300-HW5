@@ -267,6 +267,8 @@ In other words, The Strokes and Regina Spektor are included as test inputs, not 
 
 ## Reproducibility
 
+Ensure 'spotify.csv' is in your working directory, and have Neo4j running and open on browser.
+
 Run the full workflow in this order:
 
 ```bash
@@ -289,6 +291,8 @@ Once the graph is successfully imported, we can now run our recommendation algor
 
 - Open the 'song_recommendations.cypher' file. Copy the "STEP 1" code into the neo4j browser, adjust the 'seedArtists' parameter if desired, and run.
 - Copy the "STEP 2" code into the neo4j browser and run to generate recommendations.
+
+Final song, artist, album, and similarity metrics displayed in Neo4j browser.
 
 
 
