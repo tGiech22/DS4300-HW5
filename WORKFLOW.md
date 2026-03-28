@@ -14,6 +14,12 @@ The two scripts in this repository are:
 - [`clean_spotify_csv.py`](/Users/van/DS4300-HW5/clean_spotify_csv.py)
 - [`build_song_graph_data.py`](/Users/van/DS4300-HW5/build_song_graph_data.py)
 
+Additionally, the Neo4j import and recommendation steps are handled with the Cypher files:
+
+- 'import_nodes.cypher'
+- 'import_edges.cypher'
+- 'song_recommendations.cypher'
+
 ## Step 1: Clean The Raw CSV
 
 Script:
@@ -57,17 +63,19 @@ Why `track_id` is used:
 
 ## Step 3: Force-Include The Seed Artists
 
-The assignment says the recommendation system should be tested using songs by The Strokes and Regina Spektor. The script therefore always keeps songs whose `artists` field contains either of those names.
+The assignment says the recommendation system should be tested using songs by The Strokes and Regina Spektor. The script accepts a 'force-include-artists' parameter, with a list of the assignment artists as a default value. This lets us guarantee that certain artists are included in the sampled graph, and this list can be changed within the script call. Here is a quick example call:
+
+python3 build_song_graph_data.py --force-include-artists "The Strokes" "Regina Spektor"
 
 Why we do this:
-- these songs are the starting points for the recommendation query
-- if the graph sample accidentally excluded them, the recommendation step would fail
-- force-including them ensures the graph supports the assignment's test case
+- the assignment tests the system using songs by The Strokes and Regina Spektor
+- if sampling excluded those artists, the recommendation query would fail or return poor results
+- parameterizing this makes the pipeline more general than hardcoding a fixed pair of artists
 
 Why this is still general-purpose:
-- these songs are only the seed songs for one test
-- the rest of the graph still contains a broad mix of music
-- the recommendation method itself can be used for any artist or song in the graph
+- the graph-building process is still global
+- the same pipeline can force-include any artist list, not just the assignment artists
+- the recommendation method itself is reusable for any seed artist(s) present in the graph
 
 ## Step 4: Sample Additional Songs By Genre
 
@@ -96,17 +104,13 @@ The script represents each song as a numeric feature vector using these columns:
 
 - `danceability`
 - `energy`
-- `key`
 - `loudness`
-- `mode`
 - `speechiness`
 - `acousticness`
 - `instrumentalness`
 - `liveness`
 - `valence`
 - `tempo`
-- `time_signature`
-- `popularity`
 
 Before comparing songs, the script standardizes these values.
 
@@ -121,9 +125,12 @@ Why we do this:
 - standardization makes each feature contribute more fairly
 
 Why these features were chosen:
-- they capture broad musical characteristics from Spotify
 - they give a mathematical description of how songs sound and behave
+- they are more directly useful for similarity than metadata fields like popularity, time signature, key, or mode
 - they are suitable for a general-purpose similarity model
+
+Note:
+- Some fields excluded from the feature list such as popularity are still stored in the nodes, but they are not included in the similarity calculation.
 
 ## Step 6: Compute Nearest Neighbors
 
@@ -134,15 +141,17 @@ What Euclidean distance means:
 - songs that are close together have similar audio characteristics
 - songs that are far apart are less similar
 
-The script then connects each song to its `k` nearest neighbors.
+The script then keeps only neighbors whose score is atleast 'min_score', and connects each song to its `k` nearest neighbors.
 
 Default behavior:
-- `k = 5`
+- k = 8
+- min_score = 0.35
 
 Why we do this:
 - connecting every pair of songs would create an extremely dense graph
 - a dense graph would be slower to build and harder to interpret
 - nearest-neighbor edges create a sparse graph that still preserves local similarity structure
+- minimum score threshhold keeps sparsity but ensures "strong" connections
 
 Why a sparse graph is better here:
 - fewer edges means easier Neo4j import
@@ -210,6 +219,29 @@ Why this model was chosen:
 - it directly supports recommendation queries
 - it keeps the focus on song-to-song similarity, which is the main goal of the assignment
 
+## Neo4j Import
+
+The resulting nodes and edges are imported to Neo4j with simple Cypher scripts that convert CSV data to 
+appropriate data types in Neo4j, and establishes the connections specified above in the database.
+
+## Recommendation Logic
+
+Recommendations are generated in Cypher by:
+- selecting 1 or more seed artists (must match to force-included artists for best performance)
+- following outgoing 'SIMILAR' edges from songs by seed artists
+- excluding songs by seed artists themselves
+- aggregates candidate songs
+- ranks candidates by:
+    - how many seed artists have connection
+    - how many seed songs have connections
+    - total similarity score
+    - average similarity score
+
+## Why This Logic is Generally Applicable:
+- it works for 1 or more seed artists
+- artists are paramaterized before recommendation script, not hardcoded in the script itself
+- logic works the same for any seed artist(s) in the graph
+
 ## Why This Approach Fits The Assignment
 
 This workflow satisfies the assignment requirements because it:
@@ -251,7 +283,7 @@ This produces:
 Next, copy the 'song_nodes.csv' and 'song_edges.csv' files to the 'neo4j/import/' folder to prepare for database import. Then, copy the cypher code from these two files into the neo4j browser, and run consecutively:
 
 - 'import_nodes.cypher'
-- 'import_edged.cypher'
+- 'import_edges.cypher'
 
 Once the graph is successfully imported, we can now run our recommendation algorithm with the steps below:
 
