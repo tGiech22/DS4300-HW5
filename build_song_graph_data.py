@@ -27,21 +27,16 @@ import statistics
 from pathlib import Path
 
 
-SEED_ARTISTS = ("The Strokes", "Regina Spektor")
 FEATURE_COLUMNS = [
     "danceability",
     "energy",
-    "key",
     "loudness",
-    "mode",
     "speechiness",
     "acousticness",
     "instrumentalness",
     "liveness",
     "valence",
     "tempo",
-    "time_signature",
-    "popularity",
 ]
 NODE_COLUMNS = [
     "track_id",
@@ -81,7 +76,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--k",
         type=int,
-        default=5,
+        default=8,
         help="How many nearest neighbors to connect for each song.",
     )
     parser.add_argument(
@@ -89,6 +84,18 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=42,
         help="Random seed for reproducible genre sampling.",
+    )
+    parser.add_argument(
+        "--min-score",
+        type=float,
+        default=0.35,
+        help="Minimum similarity score required to create an edge.",
+    )
+    parser.add_argument(
+    "--force-include-artists",
+    nargs="*",
+    default=["The Strokes", "Regina Spektor"],
+    help="Artists to guarantee in the sampled graph.",
     )
     return parser.parse_args()
 
@@ -109,16 +116,17 @@ def load_and_deduplicate(input_path: Path) -> list[dict[str, str]]:
     return rows
 
 
-def is_seed_song(row: dict[str, str]) -> bool:
+def is_seed_song(row: dict[str, str], seed_artists: list[str]) -> bool:
     artists = row.get("artists", "")
-    return any(artist in artists for artist in SEED_ARTISTS)
+    return any(artist in artists for artist in seed_artists)
 
 
 def split_seed_and_other_songs(
     rows: list[dict[str, str]],
+    seed_artists: list[str],
 ) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
-    seed_songs = [row for row in rows if is_seed_song(row)]
-    other_songs = [row for row in rows if not is_seed_song(row)]
+    seed_songs = [row for row in rows if is_seed_song(row, seed_artists)]
+    other_songs = [row for row in rows if not is_seed_song(row, seed_artists)]
     return seed_songs, other_songs
 
 
@@ -141,9 +149,12 @@ def sample_by_genre(
 
 
 def build_sampled_song_set(
-    rows: list[dict[str, str]], songs_per_genre: int, random_state: int
+    rows: list[dict[str, str]], 
+    songs_per_genre: int, 
+    random_state: int,
+    seed_artists: list[str],
 ) -> list[dict[str, str]]:
-    seed_songs, other_songs = split_seed_and_other_songs(rows)
+    seed_songs, other_songs = split_seed_and_other_songs(rows, seed_artists)
     sampled_other_songs = sample_by_genre(other_songs, songs_per_genre, random_state)
 
     combined_rows: list[dict[str, str]] = []
@@ -194,7 +205,10 @@ def euclidean_distance(a: list[float], b: list[float]) -> float:
 
 
 def compute_similarity_edges(
-    rows: list[dict[str, str]], scaled_features: list[list[float]], k: int
+    rows: list[dict[str, str]],
+    scaled_features: list[list[float]],
+    k: int,
+    min_score: float,
 ) -> list[dict[str, object]]:
     if len(rows) <= 1:
         return []
@@ -203,21 +217,29 @@ def compute_similarity_edges(
     neighbor_count = min(k, len(rows) - 1)
 
     for source_idx, source_vector in enumerate(scaled_features):
-        distances: list[tuple[float, int]] = []
+        distances: list[tuple[float, int, float]] = []
+
         for target_idx, target_vector in enumerate(scaled_features):
             if source_idx == target_idx:
                 continue
+
             distance = euclidean_distance(source_vector, target_vector)
-            distances.append((distance, target_idx))
+            score = 1.0 / (1.0 + distance)
+
+            if score < min_score:
+                continue
+
+            distances.append((distance, target_idx, score))
 
         distances.sort(key=lambda item: item[0])
-        for distance, target_idx in distances[:neighbor_count]:
+
+        for distance, target_idx, score in distances[:neighbor_count]:
             edge_rows.append(
                 {
                     "source_track_id": rows[source_idx]["track_id"],
                     "target_track_id": rows[target_idx]["track_id"],
                     "distance": round(distance, 6),
-                    "score": round(1.0 / (1.0 + distance), 6),
+                    "score": round(score, 6),
                 }
             )
 
@@ -238,16 +260,16 @@ def main() -> None:
     edges_output = Path(args.edges_output)
 
     all_rows = load_and_deduplicate(input_path)
-    sampled_rows = build_sampled_song_set(all_rows, args.songs_per_genre, args.random_state)
+    sampled_rows = build_sampled_song_set(all_rows, args.songs_per_genre, args.random_state, args.force_include_artists)
     sampled_rows, scaled_features = standardize_features(sampled_rows)
 
     node_rows = [{column: row[column] for column in NODE_COLUMNS} for row in sampled_rows]
-    edge_rows = compute_similarity_edges(sampled_rows, scaled_features, args.k)
+    edge_rows = compute_similarity_edges(sampled_rows, scaled_features, args.k, args.min_score)
 
     write_csv(nodes_output, node_rows, NODE_COLUMNS)
     write_csv(edges_output, edge_rows, EDGE_COLUMNS)
 
-    seed_count = sum(1 for row in sampled_rows if is_seed_song(row))
+    seed_count = sum(1 for row in sampled_rows if is_seed_song(row, args.force_include_artists))
     print(f"Input songs after deduplication: {len(all_rows)}")
     print(f"Sampled graph songs: {len(node_rows)}")
     print(f"Seed songs included: {seed_count}")
