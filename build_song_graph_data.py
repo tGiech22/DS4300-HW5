@@ -26,7 +26,9 @@ import random
 import statistics
 from pathlib import Path
 
+# -- STEP 1: DEFINE ATTRIBUTES -- # 
 
+# attributes for comparing features between tracks 
 FEATURE_COLUMNS = [
     "danceability",
     "energy",
@@ -38,6 +40,8 @@ FEATURE_COLUMNS = [
     "valence",
     "tempo",
 ]
+
+# attributes unique to a specific song
 NODE_COLUMNS = [
     "track_id",
     "artists",
@@ -61,8 +65,12 @@ NODE_COLUMNS = [
     "track_genre",
 ]
 
-
+# -- STEP 2: ADD ARGUMENTS TO FEED INTO GRAPH -- # 
 def parse_args() -> argparse.Namespace:
+    """
+    Function: add and parses arguments to build nodes and edges for Neo4j; elimates need to hardcode values (i.e., k = 8, min_score = 0.35)
+    Returns: parse ns arguments 
+    """
     parser = argparse.ArgumentParser(description="Build song graph CSVs for Neo4j.")
     parser.add_argument("--input", default="spotify_clean.csv", help="Cleaned Spotify CSV input.")
     parser.add_argument("--nodes-output", default="song_nodes.csv", help="Node CSV output path.")
@@ -103,6 +111,10 @@ EDGE_COLUMNS = ["source_track_id", "target_track_id", "distance", "score"]
 
 
 def load_and_deduplicate(input_path: Path) -> list[dict[str, str]]:
+    """
+    Function: deduplicated track_ids
+    Returns: list of dicts containing track_id and data inside
+    """
     seen_track_ids: set[str] = set()
     rows: list[dict[str, str]] = []
     with input_path.open("r", newline="", encoding="utf-8") as infile:
@@ -117,6 +129,10 @@ def load_and_deduplicate(input_path: Path) -> list[dict[str, str]]:
 
 
 def is_seed_song(row: dict[str, str], seed_artists: list[str]) -> bool:
+    """
+    Function: check whether artist exists in seed_artists 
+    Returns: bool 
+    """
     artists = row.get("artists", "")
     return any(artist in artists for artist in seed_artists)
 
@@ -125,6 +141,10 @@ def split_seed_and_other_songs(
     rows: list[dict[str, str]],
     seed_artists: list[str],
 ) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    """
+    Function: Assign seed artists to rows that are is_seed_song
+    Returns: List of dictionaries containing strings 
+    """
     seed_songs = [row for row in rows if is_seed_song(row, seed_artists)]
     other_songs = [row for row in rows if not is_seed_song(row, seed_artists)]
     return seed_songs, other_songs
@@ -133,6 +153,10 @@ def split_seed_and_other_songs(
 def sample_by_genre(
     other_songs: list[dict[str, str]], songs_per_genre: int, random_state: int
 ) -> list[dict[str, str]]:
+    """
+    Function: create random_state samples to ensure reproducibility in KNN
+    Returns: list of dictionaries containing strings 
+    """
     rng = random.Random(random_state)
     songs_by_genre: dict[str, list[dict[str, str]]] = {}
     for row in other_songs:
@@ -154,6 +178,10 @@ def build_sampled_song_set(
     random_state: int,
     seed_artists: list[str],
 ) -> list[dict[str, str]]:
+    """
+    Function: turn seen_track_ids into a set without duplicates and list containing seed/sampled songs
+    Returns: list of dictionaries containing strings
+    """
     seed_songs, other_songs = split_seed_and_other_songs(rows, seed_artists)
     sampled_other_songs = sample_by_genre(other_songs, songs_per_genre, random_state)
 
@@ -167,13 +195,18 @@ def build_sampled_song_set(
         combined_rows.append(row)
     return combined_rows
 
-
+# -- STEP 3: FEATURE ENGINEERING -- # 
 def standardize_features(
     rows: list[dict[str, str]],
 ) -> tuple[list[dict[str, str]], list[list[float]]]:
+    """
+    Function: create an immutable tuple containing standardized features 
+    Returns: tupled list of dictionaries 
+    """
     valid_rows: list[dict[str, str]] = []
     raw_feature_vectors: list[list[float]] = []
 
+    # vectorize each value in feature_column 
     for row in rows:
         try:
             vector = [float(row[column]) for column in FEATURE_COLUMNS]
@@ -182,11 +215,14 @@ def standardize_features(
         valid_rows.append(row)
         raw_feature_vectors.append(vector)
 
-    means = [statistics.fmean(column) for column in zip(*raw_feature_vectors)]
-    stdevs: list[float] = []
+    # unzips vector and transposes it into a tuple 
+    means = [statistics.fmean(column) for column in zip(*raw_feature_vectors)] 
+    stdevs: list[float] = [] 
+    
+    # calculate stdev for each column in tuple (each row in tuple is functionally a column)
     for column in zip(*raw_feature_vectors):
         try:
-            stdev = statistics.pstdev(column)
+            stdev = statistics.pstdev(column) 
         except statistics.StatisticsError:
             stdev = 0.0
         stdevs.append(stdev if stdev != 0 else 1.0)
@@ -199,7 +235,7 @@ def standardize_features(
 
     return valid_rows, scaled_vectors
 
-
+# -- STEP 4: FIND DISTANCE AND SIMILARITY -- # 
 def euclidean_distance(a: list[float], b: list[float]) -> float:
     return math.sqrt(sum((left - right) ** 2 for left, right in zip(a, b)))
 
@@ -219,6 +255,7 @@ def compute_similarity_edges(
     for source_idx, source_vector in enumerate(scaled_features):
         distances: list[tuple[float, int, float]] = []
 
+        # append score if vectors are similar 
         for target_idx, target_vector in enumerate(scaled_features):
             if source_idx == target_idx:
                 continue
@@ -226,10 +263,11 @@ def compute_similarity_edges(
             distance = euclidean_distance(source_vector, target_vector)
             score = 1.0 / (1.0 + distance)
 
+            # do not append if vectors are dissimilar 
             if score < min_score:
                 continue
 
-            distances.append((distance, target_idx, score))
+            distances.append((distance, target_idx, score)) 
 
         distances.sort(key=lambda item: item[0])
 
