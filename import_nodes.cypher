@@ -1,10 +1,18 @@
-// Import song nodes into neo4j database
+// Create a stable key for Song nodes before import.
+CREATE CONSTRAINT song_track_id IF NOT EXISTS
+FOR (s:Song)
+REQUIRE s.track_id IS UNIQUE;
+
+// Import song nodes into Neo4j from the prepared CSV.
 LOAD CSV WITH HEADERS
 FROM 'file:///song_nodes.csv' AS row
-MERGE (s:Song {track_id: row.track_id})
-SET s.artists = row.artists,
-    s.album_name = row.album_name,
-    s.track_name = row.track_name,
+WITH row
+WHERE row.track_id IS NOT NULL
+  AND trim(row.track_id) <> ''
+MERGE (s:Song {track_id: trim(row.track_id)})
+SET s.artists = trim(row.artists),
+    s.album_name = trim(row.album_name),
+    s.track_name = trim(row.track_name),
     s.popularity = toInteger(row.popularity),
     s.duration_ms = toInteger(row.duration_ms),
     s.explicit = toBoolean(row.explicit),
@@ -20,4 +28,4 @@ SET s.artists = row.artists,
     s.valence = toFloat(row.valence),
     s.tempo = toFloat(row.tempo),
     s.time_signature = toInteger(row.time_signature),
-    s.track_genre = row.track_genre;
+    s.track_genre = trim(row.track_genre);
