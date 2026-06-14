@@ -1,0 +1,82 @@
+{
+  "graph_model": {
+    "description": "General-purpose song recommendation graph built from Spotify data for Neo4j.",
+    "nodes": [
+      {
+        "label": "Song",
+        "primary_key": "track_id",
+        "source_csv": "song_nodes.csv",
+        "properties": {
+          "track_id": "string",
+          "artists": "string",
+          "album_name": "string",
+          "track_name": "string",
+          "popularity": "integer",
+          "duration_ms": "integer",
+          "explicit": "boolean",
+          "danceability": "float",
+          "energy": "float",
+          "key": "integer",
+          "loudness": "float",
+          "mode": "integer",
+          "speechiness": "float",
+          "acousticness": "float",
+          "instrumentalness": "float",
+          "liveness": "float",
+          "valence": "float",
+          "tempo": "float",
+          "time_signature": "integer",
+          "track_genre": "string"
+        }
+      }
+    ],
+    "relationships": [
+      {
+        "type": "SIMILAR",
+        "source_label": "Song",
+        "target_label": "Song",
+        "source_csv": "song_edges.csv",
+        "source_key": "source_track_id",
+        "target_key": "target_track_id",
+        "properties": {
+          "distance": "float",
+          "score": "float"
+        }
+      }
+    ],
+    "csv_mapping": {
+      "song_nodes.csv": {
+        "row_maps_to": "(:Song)",
+        "match_or_create_rule": "MERGE (s:Song {track_id: row.track_id})"
+      },
+      "song_edges.csv": {
+        "row_maps_to": "(:Song {track_id: source_track_id})-[:SIMILAR]->(:Song {track_id: target_track_id})",
+        "match_rule": "MATCH (source:Song {track_id: row.source_track_id}) MATCH (target:Song {track_id: row.target_track_id})"
+      }
+    },
+    "similarity_rule": {
+      "feature_columns": [
+        "danceability",
+        "energy",
+        "loudness",
+        "speechiness",
+        "acousticness",
+        "instrumentalness",
+        "liveness",
+        "valence",
+        "tempo"
+      ],
+      "preprocessing": {
+        "deduplicate_by": "track_id",
+        "standardization": "z-score standardization on each feature column"
+      },
+      "distance_metric": "euclidean_distance",
+      "score_formula": "1 / (1 + distance)",
+      "edge_creation_rule": {
+        "nearest_neighbors": "connect each song to its k nearest neighbors",
+        "k_default": 8,
+        "min_score_default": 0.35
+      }
+    }
+  }
+}
